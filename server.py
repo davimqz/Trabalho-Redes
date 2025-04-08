@@ -11,7 +11,6 @@ def iniciar_servidor():
         conn, addr = server_socket.accept()
         print(f"\nConexão estabelecida com: {addr}")
 
-       
         handshake_data = conn.recv(1024).decode()
         if not handshake_data:
             raise ValueError("Nenhum dado recebido do cliente")
@@ -20,8 +19,8 @@ def iniciar_servidor():
         print("\nParâmetros recebidos:")
         print(f"Modo de operação: {handshake.get('modo_operacao')}")
         print(f"Tamanho máximo: {handshake.get('tam_max')}")
+        print(f"Versão do protocolo: {handshake.get('versao_protocolo')}")
 
-        
         resposta = {
             "status": "sucesso",
             "mensagem": "Conexão estabelecida com sucesso",
@@ -29,7 +28,6 @@ def iniciar_servidor():
         }
         conn.sendall(json.dumps(resposta).encode())
 
-        
         while True:
             mensagem = conn.recv(1024).decode()
             if not mensagem or mensagem.lower() == 'sair':
@@ -37,12 +35,8 @@ def iniciar_servidor():
             
             print(f"\nCliente diz: {mensagem}")
             
-            
-            resposta = input("Digite sua resposta (ou 'sair' para encerrar): ")
+            resposta = f"Mensagem recebida: '{mensagem}'"
             conn.sendall(resposta.encode())
-            
-            if resposta.lower() == 'sair':
-                break
 
     except json.JSONDecodeError:
         print("Erro: Dados recebidos não são JSON válido")
