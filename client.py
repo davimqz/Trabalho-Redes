@@ -1,7 +1,9 @@
 import socket
 import json
 
+TIMEOUT = 2
 TAMANHO_PACOTE = 3
+
 
 def fragmentar_mensagem(mensagem):
     pacotes = []
@@ -13,8 +15,8 @@ def fragmentar_mensagem(mensagem):
 def calcular_checksum(payload):
     return sum(ord(c) for c in payload)
 
-def obter_parametros():
-    print("\nConfiguração de conexão:")
+'''def obter_parametros():
+   print("\nConfiguração de conexão:")
     modo = input("Modo de operação (grupo/individual): ") or "grupo"
     tam_max = input("Tamanho máximo do grupo (padrão 6): ") or "6"
     versao = input("Versão do protocolo (padrão 1.0): ") or "1.0"
@@ -24,10 +26,12 @@ def obter_parametros():
         "tam_max": int(tam_max),
         "versao_protocolo": versao
     }
+'''
 
 def iniciar_cliente():
     try:
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.settimeout(TIMEOUT)
         client_socket.connect(('localhost', 9000))
         print("Conectado ao servidor")
 
