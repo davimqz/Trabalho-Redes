@@ -54,7 +54,7 @@ def iniciar_servidor():
             
             try:
                 pacote = json.loads(mensagem)
-                seq = pacote["payload"]
+                seq = pacote["seq_num"]
                 payload = pacote["payload"]
                 checksum_recebido = pacote["checksum"]
                 checksum_esperado = calcular_checksum(payload)
@@ -72,11 +72,12 @@ def iniciar_servidor():
                 print("Pacote malformado")
 
             
-        meensagem_ordenada = []
+        mensagem_ordenada = []
         for k in sorted (mensagem_final.keys()):
-            meensagem_ordenada.append(mensagem_final)
+            mensagem_ordenada.append(mensagem_final[k])
 
-        mensagem_reconstruida = ''.join(meensagem_ordenada)
+        mensagem_reconstruida = ''.join(mensagem_ordenada)
+        print(f"\nMensagem reconstruída: {mensagem_reconstruida}")
 
     except json.JSONDecodeError:
         print("Erro: Dados recebidos não são JSON válido")
