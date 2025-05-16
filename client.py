@@ -15,7 +15,8 @@ def fragmentar_mensagem(mensagem):
 def calcular_checksum(payload):
     return sum(ord(c) for c in payload)
 
-'''def obter_parametros():
+'''
+def obter_parametros():
    print("\nConfiguração de conexão:")
     modo = input("Modo de operação (grupo/individual): ") or "grupo"
     tam_max = input("Tamanho máximo do grupo (padrão 6): ") or "6"
@@ -35,15 +36,26 @@ def iniciar_cliente():
         client_socket.connect(('localhost', 9000))
         print("Conectado ao servidor")
 
-        parametros = obter_parametros()
-
-        client_socket.sendall(json.dumps(parametros).encode())
+        handshake = {
+            "modo_operacao": "grupo",
+            "tam_max": 6,
+            "versao_protocolo": "1.0"
+        }
+        
+        '''
         print("\nParâmetros enviados:")
         print(f"Modo: {parametros['modo_operacao']}")
         print(f"Tamanho máximo: {parametros['tam_max']}")
         print(f"Versão: {parametros['versao_protocolo']}")
+        '''
+       
+        client_socket.sendall(json.dumps(handshake).encode())
+        print("Handashake enviado")
 
+    
         resposta = client_socket.recv(1024).decode()
+        print("Resposta ao servidor: ", resposta)
+
         if not resposta:
             raise ValueError("Nenhuma resposta recebida do servidor")
 
