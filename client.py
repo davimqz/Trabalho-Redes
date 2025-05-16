@@ -84,7 +84,7 @@ def iniciar_cliente():
                 perda = random.random() < PROBABILIDADE_PERDA
                 
                 pacote = {
-                    "sequencia_numerica": seq,
+                    "seq_num": seq,
                     "payload": payload,
                     "checksum": calcular_checksum(payload) 
                     
