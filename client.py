@@ -100,6 +100,18 @@ def iniciar_cliente():
                     print(f"Pacote sendo enviado {seq}: {pacote}")
                     client_socket.sendall(json.dumps(pacote).encode())
 
+                try:
+                    resposta = client_socket.recv(1024).decode()
+                    resposta_json = json.loads(resposta)
+
+                    if resposta_json['status'] == 'ACK':
+                        print(f"Pacote {seq} confirmado")
+                        seq += 1
+                    else:
+                        print(f"Pacote {seq} corrompido")
+                except socket.timeout:
+                    print(f"Timeout no pacote {seq}")
+
     except ConnectionRefusedError:
         print("Erro: Não foi possível conectar ao servidor")
     except Exception as e:
