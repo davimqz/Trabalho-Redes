@@ -1,8 +1,12 @@
 import socket
 import json
+import random
 
+PROBABILIDADE_ERRO = 0.2
+PROBABILIDADE_PERDA = 0.1
 TIMEOUT = 2
 TAMANHO_PACOTE = 3
+
 
 
 def fragmentar_mensagem(mensagem):
@@ -56,22 +60,45 @@ def iniciar_cliente():
         resposta = client_socket.recv(1024).decode()
         print("Resposta ao servidor: ", resposta)
 
-        if not resposta:
-            raise ValueError("Nenhuma resposta recebida do servidor")
 
+        '''
         dados_resposta = json.loads(resposta)
         print(f"\nResposta do servidor: {dados_resposta['mensagem']}")
         print(f"Status: {dados_resposta['status']}")
+        '''
 
         while True:
-            mensagem = input("\nDigite sua mensagem (ou 'sair' para encerrar): ")
-            client_socket.sendall(mensagem.encode())
+            mensagem = input("\nDigite sua mensagem ou 'sair' para encerrar: ")
             
             if mensagem.lower() == 'sair':
+                client_socket.sendall("sair".encode())
                 break
             
-            resposta = client_socket.recv(1024).decode()
-            print(f"Servidor confirmou recebimento: {resposta}")
+            pacotes = fragmentar_mensagem(mensagem)
+            seq = 0
+            enviados = []
+
+            while seq < len(pacotes):
+                payload = pacotes[seq]
+                erro = random.random() < PROBABILIDADE_ERRO
+                perda = random.random() < PROBABILIDADE_PERDA
+                
+                pacote = {
+                    "sequencia_numerica": seq,
+                    "payload": payload,
+                    "checksum": calcular_checksum(payload) 
+                    
+                }
+
+                if erro:
+                    pacote["checksum"] += 1
+                    print(f"[Simulação] Pacote {seq} enviado com ERRO de integridade")
+
+                if perda:
+                    print(f"[Simulação] Pacote {seq} não enviado ao servidor")
+                else:
+                    print(f"Pacote sendo enviado {seq}: {pacote}")
+                    client_socket.sendall(json.dumps(pacote).encode())
 
     except ConnectionRefusedError:
         print("Erro: Não foi possível conectar ao servidor")
