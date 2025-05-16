@@ -1,6 +1,9 @@
 import socket
 import json
 
+def calcular_checksum(payload):
+    return sum(ord(c) for c in payload)
+
 def obter_parametros():
     print("\nConfiguração de conexão:")
     modo = input("Modo de operação (grupo/individual): ") or "grupo"

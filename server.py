@@ -1,6 +1,9 @@
 import socket
 import json
 
+def calcular_checksum(payload):
+    return sum(ord(c) for c in payload)
+
 def iniciar_servidor():
     try:
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
