@@ -1,6 +1,15 @@
 import socket
 import json
 
+TAMANHO_PACOTE = 3
+
+def fragmentar_mensagem(mensagem):
+    pacotes = []
+    for i in range (0, len(mensagem), TAMANHO_PACOTE):
+        payload = mensagem[i: i + TAMANHO_PACOTE]
+        pacotes.append(payload)
+    return pacotes
+
 def calcular_checksum(payload):
     return sum(ord(c) for c in payload)
 
