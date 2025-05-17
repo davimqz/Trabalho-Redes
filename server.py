@@ -36,7 +36,7 @@ def iniciar_servidor():
         '''
 
         handshake = json.loads(conn.recv(1024).decode())
-        print(f"Handshake recebido: ", {handshake})
+        print(f"Handshake recebido:  {handshake}")
         
         conn.sendall(json.dumps({
             "status": "sucesso",
