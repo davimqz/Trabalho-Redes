@@ -1,4 +1,5 @@
 import socket
+import time
 import json
 
 def calcular_checksum(payload):
@@ -14,79 +15,61 @@ def iniciar_servidor():
         conn, addr = server_socket.accept()
         print(f"\nConexão estabelecida com: {addr}")
 
-        '''
-        if not handshake_data:
-            raise ValueError("Nenhum dado recebido do cliente")
-
-        handshake = json.loads(handshake_data)
-
-        print("\nParâmetros recebidos:")
-        print(f"Modo de operação: {handshake.get('modo_operacao')}")
-        print(f"Tamanho máximo: {handshake.get('tam_max')}")
-        print(f"Versão do protocolo: {handshake.get('versao_protocolo')}")
-        
-        handshake_data = conn.recv(1024).decode()
-
-        resposta = {
-            "status": "sucesso",
-            "mensagem": "Conexão estabelecida com sucesso",
-            "parametros_aceitos": handshake
-        }
-        conn.sendall(json.dumps(resposta).encode())
-        '''
-
         handshake = json.loads(conn.recv(1024).decode())
         print(f"Handshake recebido:  {handshake}")
+
+        modo = handshake.get("modo_operacao", "individual")
+        grupo_max = handshake.get("tam_max", 6)
         
         conn.sendall(json.dumps({
             "status": "sucesso",
-            "mensagem": "Conexão estabelecida"
-        }
-        ).encode())
+            "mensagem": "Conexão estabelecida com ACK em grupo" if modo == "grupo" else "ACK individual"
+        }).encode())
 
-        mensagem_final = {}
+        buffer_recebido = {}
+        ack_pendentes = set()
+        tempo_ack = time.time()
 
 
         while True:
-            mensagem = conn.recv(1024).decode()
-            if not mensagem or mensagem.lower() == 'sair':
+            dado = conn.recv(1024).decode()
+            if not dado or dado.lower() == "sair":
                 break
-            
+
             try:
-                pacote = json.loads(mensagem)
+                pacote = json.loads(dado)
                 seq = pacote["seq_num"]
                 payload = pacote["payload"]
-                checksum_recebido = pacote["checksum"]
-                checksum_esperado = calcular_checksum(payload)
+                checksum = pacote["checksum"]
 
-                print(f"\nPacote Recebido {seq}: '{payload}' \n checksum recebido: {checksum_recebido} \n checksum esperado: {checksum_esperado}")
+                print(f"[RECEBIDO] Seq {seq} - Payload '{payload}'")
 
-                if checksum_recebido == checksum_esperado:
-                    mensagem_final[seq] = payload
-                    resposta = {"status": "ACK"}
+                if checksum == calcular_checksum(payload):
+                    buffer_recebido[seq] = payload
+                    ack_pendentes.add(seq)
                 else:
-                    resposta = {"status": "NAK"}
+                    print(f"[ERRO CHECKSUM] Pacote {seq}")
+                if modo == "grupo":
+                    if len(ack_pendentes) >= grupo_max or (time.time() - tempo_ack > 2):
+                        conn.sendall(json.dumps({"acks": list(ack_pendentes)}).encode())
+                        print(f"[ACK GRUPO] Enviados: {ack_pendentes}")
+                        ack_pendentes.clear()
+                        tempo_ack = time.time()
+                else:
+                    conn.sendall(json.dumps({"acks": [seq]}).encode())
+                    print(f"[ACK INDIV] Enviado: {seq}")
 
-                conn.sendall(json.dumps(resposta).encode())
             except json.JSONDecodeError:
-                print("Pacote malformado")
+                print("[MALFORMADO] Pacote inválido")
 
-            
-        mensagem_ordenada = []
-        for k in sorted (mensagem_final.keys()):
-            mensagem_ordenada.append(mensagem_final[k])
+        mensagem_ordenada = ''.join(buffer_recebido[k] for k in sorted(buffer_recebido))
+        print(f"\n[FINAL] Mensagem reconstruída: {mensagem_ordenada}")
 
-        mensagem_reconstruida = ''.join(mensagem_ordenada)
-        print(f"\nMensagem reconstruída: {mensagem_reconstruida}")
-
-    except json.JSONDecodeError:
-        print("Erro: Dados recebidos não são JSON válido")
     except Exception as e:
-        print(f"Erro no servidor: {str(e)}")
+        print(f"[ERRO SERVIDOR] {e}")
     finally:
         conn.close()
         server_socket.close()
-        print("\nConexão encerrada")
-
+        print("Conexão encerrada")
 if __name__ == "__main__":
     iniciar_servidor()
