@@ -3,6 +3,7 @@ import json
 import time
 import random
 
+# ==== CONFIGURAÇÕES ====
 TAM_FRAGMENTO = 3
 JANELA = 4
 TEMPO_TIMEOUT = 2
@@ -42,7 +43,7 @@ def main():
             perda_simulada = SIMULAR_PERDA and random.random() < 0.2
 
             if erro_simulado:
-                checksum += 1 
+                checksum += 1  # Força erro proposital
 
             pacote = {
                 "seq_num": proximo,
@@ -77,6 +78,7 @@ def main():
                         pacote = janela[nack_seq][0]
                         s.sendall((json.dumps(pacote) + '\n').encode())
 
+            # Atualiza base
             while base not in janela and base < proximo:
                 base += 1
 
