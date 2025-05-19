@@ -54,7 +54,6 @@ def iniciar_cliente():
             base = 0
 
             while base < len(pacotes):
-                # Enviar pacotes dentro da janela
                 while len(enviados) < JANELA_ENVIO and (base + len(enviados)) < len(pacotes):
                     seq = base + len(enviados)
                     payload = pacotes[seq]
@@ -82,10 +81,8 @@ def iniciar_cliente():
                     enviados[seq] = pacote
                     retries[seq] = 0
 
-                # Receber ACKs
                 try:
                     resposta = client_socket.recv(1024).decode()
-
                     for linha in resposta.strip().split('\n'):
                         if not linha:
                             continue
@@ -97,8 +94,6 @@ def iniciar_cliente():
                                 del enviados[ack]
                             if ack in retries:
                                 del retries[ack]
-
-                    # Avança base se ACK recebido
                     while base in acked:
                         base += 1
 
