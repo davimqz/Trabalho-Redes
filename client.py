@@ -38,32 +38,13 @@ def iniciar_cliente():
         client_socket.connect(('localhost', 9000))
         print("Conectado ao servidor")
 
-        handshake = {
-            "modo_operacao": "grupo",
-            "tam_max": 6,
-            "versao_protocolo": "1.0"
-        }
-        
-        '''
-        print("\nParâmetros enviados:")
-        print(f"Modo: {parametros['modo_operacao']}")
-        print(f"Tamanho máximo: {parametros['tam_max']}")
-        print(f"Versão: {parametros['versao_protocolo']}")
-        '''
-       
-        client_socket.sendall(json.dumps(handshake).encode())
-        print("Handashake enviado")
+        parametros = obter_parametros()
+        client_socket.sendall(json.dumps(parametros).encode())
+        print("Handshake enviado")
 
-    
         resposta = client_socket.recv(1024).decode()
-        print("Resposta ao servidor: ", resposta)
+        print("Resposta do servidor: ", resposta)        
 
-
-        '''
-        dados_resposta = json.loads(resposta)
-        print(f"\nResposta do servidor: {dados_resposta['mensagem']}")
-        print(f"Status: {dados_resposta['status']}")
-        '''
 
         while True:
             mensagem = input("\nDigite sua mensagem ou 'sair' para encerrar: ")
@@ -73,42 +54,55 @@ def iniciar_cliente():
                 break
             
             pacotes = fragmentar_mensagem(mensagem)
-            seq = 0
-            enviados = []
 
-            while seq < len(pacotes):
-                payload = pacotes[seq]
-                erro = random.random() < PROBABILIDADE_ERRO
-                perda = random.random() < PROBABILIDADE_PERDA
-                
-                pacote = {
-                    "seq_num": seq,
-                    "payload": payload,
-                    "checksum": calcular_checksum(payload) 
-                    
-                }
+            enviados = {}
 
-                if erro:
-                    pacote["checksum"] += 1
-                    print(f"[Simulação] Pacote {seq} enviado com ERRO de integridade")
+            acked = set()
 
-                if perda:
-                    print(f"[Simulação] Pacote {seq} não enviado ao servidor")
-                else:
-                    print(f"Pacote sendo enviado {seq}: {pacote}")
+            base = 0  
+
+            while base < len(pacotes):
+                while len(enviados) < JANELA_ENVIO and (base + len(enviados)) < len(pacotes):
+                    seq = base + len(enviados)
+                    payload = pacotes[seq]
+                    erro = random.random() < PROBABILIDADE_ERRO
+                    perda = random.random() < PROBABILIDADE_PERDA
+
+                    pacotes = {
+                        "seq_num": seq,
+                        "payload": payload,
+                        "checksum": calcular_checksum(payload)  
+                    }
+
+                    if erro:
+                        pacote["checksum"] += 1
+                        print(f"[ERRO] Pacote {seq} com checksum incorreto")
+                    if perda:
+                        print(f"[PERDA] Pacote {seq} não enviado")
+                        enviados[seq] = pacote 
+                        continue
+
                     client_socket.sendall(json.dumps(pacote).encode())
+                    print(f"[ENVIO] Pacote {seq} enviado: {pacote}")
+                    enviados[seq] = pacote
 
                 try:
                     resposta = client_socket.recv(1024).decode()
-                    resposta_json = json.loads(resposta)
+                    acks = json.loads(resposta).get("acks", [])
+                    print(f"[ACKs] Recebidos: {acks}")
 
-                    if resposta_json['status'] == 'ACK':
-                        print(f"Pacote {seq} confirmado")
-                        seq += 1
-                    else:
-                        print(f"Pacote {seq} corrompido")
+                    for ack in acks:
+                        acked.add(ack)
+                        if ack in enviados:
+                            del enviados[ack]
+                    while base in acked:
+                        base += 1
                 except socket.timeout:
-                    print(f"Timeout no pacote {seq}")
+
+                    print("[TIMEOUT] Reenviando pacotes não confirmados...")
+                    for seq, pacote in enviados.items():
+                        client_socket.sendall(json.dumps(pacote).encode())
+                        print(f"[REENVIO] Pacote {seq}: {pacote}")
 
     except ConnectionRefusedError:
         print("Erro: Não foi possível conectar ao servidor")
