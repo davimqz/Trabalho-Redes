@@ -1,119 +1,95 @@
 import socket
 import json
-import random
 import time
+import random
 
-PROBABILIDADE_ERRO = 0.2
-PROBABILIDADE_PERDA = 0.1
-TIMEOUT = 2
-TAMANHO_PACOTE = 3
-JANELA_ENVIO = 3
-MAX_RETRIES = 5
+TAM_FRAGMENTO = 3
+JANELA = 4
+TEMPO_TIMEOUT = 2
+SIMULAR_ERRO = True
+SIMULAR_PERDA = True
 
 def calcular_checksum(payload):
     return sum(ord(c) for c in payload)
 
 def fragmentar_mensagem(mensagem):
-    return [mensagem[i:i + TAMANHO_PACOTE] for i in range(0, len(mensagem), TAMANHO_PACOTE)]
+    return [mensagem[i:i+TAM_FRAGMENTO] for i in range(0, len(mensagem), TAM_FRAGMENTO)]
 
-def obter_parametros():
-    print("=== Configuração do Cliente ===")
-    modo = input("Modo de operação (individual/grupo): ") or "grupo"
-    tam_max = input("Tamanho máximo do grupo (padrão 6): ") or "6"
-    versao = input("Versão do protocolo (padrão 1.0): ") or "1.0"
-    return {
-        "modo_operacao": modo,
-        "tam_max": int(tam_max),
-        "versao_protocolo": versao
-    }
+def main():
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect(('localhost', 9000))
 
-def iniciar_cliente():
-    try:
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        client_socket.settimeout(TIMEOUT)
-        client_socket.connect(('localhost', 9000))
-        print("Conectado ao servidor")
+    modo = input("Modo de operação (individual/grupo): ").strip()
+    tam_max = int(input("Tamanho máximo do grupo (padrão 6): ") or "6")
+    protocolo = {"modo_operacao": modo, "tam_max": tam_max}
+    s.sendall((json.dumps(protocolo) + '\n').encode())
 
-        parametros = obter_parametros()
-        client_socket.sendall((json.dumps(parametros) + '\n').encode())
-        print("Handshake enviado")
+    resposta = s.recv(1024).decode()
+    print(f"Handshake resposta: {resposta.strip()}")
 
-        resposta = client_socket.recv(1024).decode()
-        print("Resposta do servidor:", resposta.strip())
+    mensagem = input("Digite a mensagem para enviar: ").strip()
+    pacotes = fragmentar_mensagem(mensagem)
 
-        while True:
-            mensagem = input("\nDigite sua mensagem ou 'sair' para encerrar: ")
-            if mensagem.lower() == 'sair':
-                client_socket.sendall("sair".encode())
-                break
+    base = 0
+    proximo = 0
+    janela = {}
 
-            pacotes = fragmentar_mensagem(mensagem)
-            enviados = {}
-            retries = {}
-            acked = set()
-            base = 0
+    while base < len(pacotes):
+        while proximo < base + JANELA and proximo < len(pacotes):
+            payload = pacotes[proximo]
+            checksum = calcular_checksum(payload)
+            erro_simulado = SIMULAR_ERRO and random.random() < 0.2
+            perda_simulada = SIMULAR_PERDA and random.random() < 0.2
 
-            while base < len(pacotes):
-                while len(enviados) < JANELA_ENVIO and (base + len(enviados)) < len(pacotes):
-                    seq = base + len(enviados)
-                    payload = pacotes[seq]
-                    erro = random.random() < PROBABILIDADE_ERRO
-                    perda = random.random() < PROBABILIDADE_PERDA
+            if erro_simulado:
+                checksum += 1 
 
-                    pacote = {
-                        "seq_num": seq,
-                        "payload": payload,
-                        "checksum": calcular_checksum(payload)
-                    }
+            pacote = {
+                "seq_num": proximo,
+                "payload": payload,
+                "checksum": checksum
+            }
 
-                    if erro:
-                        pacote["checksum"] += 1
-                        print(f"[ERRO] Pacote {seq} com checksum incorreto")
+            if not perda_simulada:
+                s.sendall((json.dumps(pacote) + '\n').encode())
+                print(f"[ENVIADO] Seq {proximo} - Payload '{payload}' - ErroSimulado={erro_simulado}")
+            else:
+                print(f"[PERDA SIMULADA] Seq {proximo} - Payload '{payload}'")
 
-                    if perda:
-                        print(f"[PERDA] Pacote {seq} não enviado")
-                        enviados[seq] = pacote
-                        retries[seq] = retries.get(seq, 0)
-                        continue
+            janela[proximo] = (pacote, time.time())
+            proximo += 1
 
-                    client_socket.sendall((json.dumps(pacote) + '\n').encode())
-                    print(f"[ENVIO] Pacote {seq} enviado: {pacote}")
-                    enviados[seq] = pacote
-                    retries[seq] = 0
+        try:
+            s.settimeout(0.5)
+            dados = s.recv(1024).decode()
+            for linha in dados.strip().split('\n'):
+                if not linha: continue
+                resposta = json.loads(linha)
 
-                try:
-                    resposta = client_socket.recv(1024).decode()
-                    for linha in resposta.strip().split('\n'):
-                        if not linha:
-                            continue
-                        acks = json.loads(linha).get("acks", [])
-                        print(f"[ACKs] Recebidos: {acks}")
-                        for ack in acks:
-                            acked.add(ack)
-                            if ack in enviados:
-                                del enviados[ack]
-                            if ack in retries:
-                                del retries[ack]
-                    while base in acked:
-                        base += 1
+                if 'acks' in resposta:
+                    for ack_seq in resposta["acks"]:
+                        print(f"[ACK GRUPO] recebido {ack_seq}")
+                        if ack_seq in janela:
+                            del janela[ack_seq]
+                elif 'nacks' in resposta:
+                    for nack_seq in resposta["nacks"]:
+                        print(f"[NACK] recebido {nack_seq} — reenviando")
+                        pacote = janela[nack_seq][0]
+                        s.sendall((json.dumps(pacote) + '\n').encode())
+            while base not in janela and base < proximo:
+                base += 1
 
-                except socket.timeout:
-                    print("[TIMEOUT] Reenviando pacotes não confirmados...")
-                    for seq, pacote in list(enviados.items()):
-                        retries[seq] += 1
-                        if retries[seq] > MAX_RETRIES:
-                            print(f"[DESCARTE] Pacote {seq} descartado após {MAX_RETRIES} tentativas.")
-                            del enviados[seq]
-                            acked.add(seq)
-                            continue
-                        client_socket.sendall((json.dumps(pacote) + '\n').encode())
-                        print(f"[REENVIO] Pacote {seq}: {pacote}")
+        except socket.timeout:
+            now = time.time()
+            for seq, (pacote, t) in list(janela.items()):
+                if now - t > TEMPO_TIMEOUT:
+                    print(f"[TIMEOUT] Reenviando pacote {seq}")
+                    s.sendall((json.dumps(pacote) + '\n').encode())
+                    janela[seq] = (pacote, time.time())
 
-    except Exception as e:
-        print(f"[ERRO CLIENTE] {e}")
-    finally:
-        client_socket.close()
-        print("Conexão encerrada")
+    print("Todos os pacotes foram enviados e confirmados.")
+    s.sendall("sair\n".encode())
+    s.close()
 
 if __name__ == "__main__":
-    iniciar_cliente()
+    main()
