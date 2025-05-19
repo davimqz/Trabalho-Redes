@@ -7,7 +7,8 @@ PROBABILIDADE_ERRO = 0.2
 PROBABILIDADE_PERDA = 0.1
 TIMEOUT = 2
 TAMANHO_PACOTE = 3
-JANELA_ENVIO = 3  
+JANELA_ENVIO = 3
+MAX_RETRIES = 5
 
 def calcular_checksum(payload):
     return sum(ord(c) for c in payload)
@@ -48,10 +49,12 @@ def iniciar_cliente():
 
             pacotes = fragmentar_mensagem(mensagem)
             enviados = {}
+            retries = {}
             acked = set()
             base = 0
 
             while base < len(pacotes):
+                # Enviar pacotes dentro da janela
                 while len(enviados) < JANELA_ENVIO and (base + len(enviados)) < len(pacotes):
                     seq = base + len(enviados)
                     payload = pacotes[seq]
@@ -71,12 +74,15 @@ def iniciar_cliente():
                     if perda:
                         print(f"[PERDA] Pacote {seq} não enviado")
                         enviados[seq] = pacote
+                        retries[seq] = retries.get(seq, 0)
                         continue
 
                     client_socket.sendall((json.dumps(pacote) + '\n').encode())
                     print(f"[ENVIO] Pacote {seq} enviado: {pacote}")
                     enviados[seq] = pacote
+                    retries[seq] = 0
 
+                # Receber ACKs
                 try:
                     resposta = client_socket.recv(1024).decode()
 
@@ -89,14 +95,22 @@ def iniciar_cliente():
                             acked.add(ack)
                             if ack in enviados:
                                 del enviados[ack]
+                            if ack in retries:
+                                del retries[ack]
 
-                
+                    # Avança base se ACK recebido
                     while base in acked:
                         base += 1
 
                 except socket.timeout:
                     print("[TIMEOUT] Reenviando pacotes não confirmados...")
-                    for seq, pacote in enviados.items():
+                    for seq, pacote in list(enviados.items()):
+                        retries[seq] += 1
+                        if retries[seq] > MAX_RETRIES:
+                            print(f"[DESCARTE] Pacote {seq} descartado após {MAX_RETRIES} tentativas.")
+                            del enviados[seq]
+                            acked.add(seq)
+                            continue
                         client_socket.sendall((json.dumps(pacote) + '\n').encode())
                         print(f"[REENVIO] Pacote {seq}: {pacote}")
 
