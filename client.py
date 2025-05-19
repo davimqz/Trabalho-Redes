@@ -13,7 +13,7 @@ def calcular_checksum(payload):
     return sum(ord(c) for c in payload)
 
 def fragmentar_mensagem(mensagem):
-    return [mensagem[i:i+TAMANHO_PACOTE] for i in range(0, len(mensagem), TAMANHO_PACOTE)]
+    return [mensagem[i:i + TAMANHO_PACOTE] for i in range(0, len(mensagem), TAMANHO_PACOTE)]
 
 def obter_parametros():
     print("=== Configuração do Cliente ===")
@@ -34,11 +34,11 @@ def iniciar_cliente():
         print("Conectado ao servidor")
 
         parametros = obter_parametros()
-        client_socket.sendall(json.dumps(parametros).encode())
+        client_socket.sendall((json.dumps(parametros) + '\n').encode())
         print("Handshake enviado")
 
         resposta = client_socket.recv(1024).decode()
-        print("Resposta do servidor:", resposta)
+        print("Resposta do servidor:", resposta.strip())
 
         while True:
             mensagem = input("\nDigite sua mensagem ou 'sair' para encerrar: ")
@@ -58,7 +58,6 @@ def iniciar_cliente():
                     erro = random.random() < PROBABILIDADE_ERRO
                     perda = random.random() < PROBABILIDADE_PERDA
 
-          
                     pacote = {
                         "seq_num": seq,
                         "payload": payload,
@@ -74,28 +73,31 @@ def iniciar_cliente():
                         enviados[seq] = pacote
                         continue
 
-                    client_socket.sendall(json.dumps(pacote).encode())
+                    client_socket.sendall((json.dumps(pacote) + '\n').encode())
                     print(f"[ENVIO] Pacote {seq} enviado: {pacote}")
                     enviados[seq] = pacote
 
-    
                 try:
                     resposta = client_socket.recv(1024).decode()
-                    acks = json.loads(resposta).get("acks", [])
-                    print(f"[ACKs] Recebidos: {acks}")
 
-                    for ack in acks:
-                        acked.add(ack)
-                        if ack in enviados:
-                            del enviados[ack]
+                    for linha in resposta.strip().split('\n'):
+                        if not linha:
+                            continue
+                        acks = json.loads(linha).get("acks", [])
+                        print(f"[ACKs] Recebidos: {acks}")
+                        for ack in acks:
+                            acked.add(ack)
+                            if ack in enviados:
+                                del enviados[ack]
 
-  
+                
                     while base in acked:
                         base += 1
+
                 except socket.timeout:
                     print("[TIMEOUT] Reenviando pacotes não confirmados...")
                     for seq, pacote in enviados.items():
-                        client_socket.sendall(json.dumps(pacote).encode())
+                        client_socket.sendall((json.dumps(pacote) + '\n').encode())
                         print(f"[REENVIO] Pacote {seq}: {pacote}")
 
     except Exception as e:
