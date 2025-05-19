@@ -17,9 +17,9 @@ def fragmentar_mensagem(mensagem):
 def calcular_checksum(payload):
     return sum(ord(c) for c in payload)
 
-'''
+
 def obter_parametros():
-   print("\nConfiguração de conexão:")
+    print("\nConfiguração de conexão:")
     modo = input("Modo de operação (grupo/individual): ") or "grupo"
     tam_max = input("Tamanho máximo do grupo (padrão 6): ") or "6"
     versao = input("Versão do protocolo (padrão 1.0): ") or "1.0"
@@ -29,7 +29,7 @@ def obter_parametros():
         "tam_max": int(tam_max),
         "versao_protocolo": versao
     }
-'''
+
 
 def iniciar_cliente():
     try:
