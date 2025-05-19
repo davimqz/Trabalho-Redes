@@ -1,20 +1,18 @@
 import socket
 import json
 import random
+import time
 
 PROBABILIDADE_ERRO = 0.2
 PROBABILIDADE_PERDA = 0.1
 TIMEOUT = 2
 TAMANHO_PACOTE = 3
+JANELA_ENVIO = 3
 
 
 
 def fragmentar_mensagem(mensagem):
-    pacotes = []
-    for i in range (0, len(mensagem), TAMANHO_PACOTE):
-        payload = mensagem[i: i + TAMANHO_PACOTE]
-        pacotes.append(payload)
-    return pacotes
+    return [mensagem[i:i+TAMANHO_PACOTE] for i in range(0, len(mensagem), TAMANHO_PACOTE)]
 
 def calcular_checksum(payload):
     return sum(ord(c) for c in payload)
