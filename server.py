@@ -72,12 +72,9 @@ def iniciar_servidor():
 
                     except json.JSONDecodeError:
                         print("[MALFORMADO] Pacote inválido")
+
             except socket.timeout:
-                if modo == "grupo" and ack_pendentes:
-                    conn.sendall((json.dumps({"acks": list(ack_pendentes)}) + '\n').encode())
-                    print(f"[ACK FORÇADO] {ack_pendentes}")
-                    ack_pendentes.clear()
-                    tempo_ack = time.time()
+                pass  # ACK forçado removido aqui
 
         mensagem_ordenada = ''.join(buffer_recebido[k] for k in sorted(buffer_recebido))
         print(f"\n[MENSAGEM FINAL] {mensagem_ordenada}")

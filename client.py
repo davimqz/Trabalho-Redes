@@ -6,8 +6,8 @@ import random
 TAM_FRAGMENTO = 3
 JANELA = 4
 TEMPO_TIMEOUT = 2
-SIMULAR_ERRO = True
-SIMULAR_PERDA = True
+SIMULAR_ERRO = False
+SIMULAR_PERDA = False
 
 def calcular_checksum(payload):
     return sum(ord(c) for c in payload)
