@@ -1,90 +1,143 @@
+
 import socket
-import json
 import time
 
-def calcular_checksum(payload):
-    return sum(ord(c) for c in payload)
+def print_title(text):
+    border = '+' + '-' * (len(text) + 2) + '+'
+    print('\n' + border)
+    print(f'| {text} |')
+    print(border + '\n')
 
-def iniciar_servidor():
-    try:
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.bind(('localhost', 9000))
-        server_socket.listen(1)
-        print("Servidor iniciado. Aguardando conexão...")
+def process_handshake(client_socket):
+    print_title("SERVER ← HANDSHAKE")
+    print("SERVER: waiting for SYN…")
+    syn = client_socket.recv(1024).decode('utf-8')
+    print(f"CLIENT → {syn}")
 
-        conn, addr = server_socket.accept()
-        print(f"Conexão estabelecida com: {addr}")
+    parts = syn.split("|")
+    if parts[0] == "SYN" and len(parts) == 3:
+        mode = parts[1]
+        max_size = int(parts[2])
 
-        handshake = json.loads(conn.recv(1024).decode())
-        print(f"Handshake recebido: {handshake}")
-        modo = handshake.get("modo_operacao", "individual")
-        grupo_max = handshake.get("tam_max", 6)
+        synack = f"SYN-ACK|{mode}|{max_size}"
+        print(f"SERVER → sending: {synack}")
+        client_socket.send(synack.encode('utf-8'))
 
-        conn.sendall((json.dumps({
-            "status": "sucesso",
-            "mensagem": "ACK individual" if modo == "individual" else "ACK em grupo"
-        }) + '\n').encode())
+        print("SERVER: waiting for ACK…")
+        ack = client_socket.recv(1024).decode('utf-8').strip()
+        if ack == "ACK":
+            print_title("HANDSHAKE COMPLETE")
+            return mode, max_size
 
-        buffer_recebido = {}
-        ack_pendentes = set()
-        nack_pendentes = set()
-        tempo_ack = time.time()
+    client_socket.send(b"ERROR")
+    print_title("HANDSHAKE FAILED")
+    return None, None
 
-        while True:
-            try:
-                conn.settimeout(0.5)
-                dado = conn.recv(1024).decode()
-                if not dado or dado.lower().strip() == "sair":
-                    break
+def receive_full_message(conn):
+    full = b''
+    while b'\n' not in full:
+        chunk = conn.recv(1024)
+        if not chunk:
+            return full
+        full += chunk
+    return full.split(b'\n')[0]
 
-                for linha in dado.strip().split('\n'):
-                    if not linha:
-                        continue
-                    try:
-                        pacote = json.loads(linha)
-                        seq = pacote["seq_num"]
-                        payload = pacote["payload"]
-                        checksum = pacote["checksum"]
+def receive_stop_and_wait(client_socket):
+    print_title("STARTING STOP-AND-WAIT RECEPTION")
+    full_message = ""
+    expected = 1
 
-                        print(f"[RECEBIDO] Seq {seq} - Payload '{payload}'")
+    while True:
+        try:
+            data = client_socket.recv(1024)
+            if not data:
+                break
+            segment = data.decode('utf-8')
+            parts = segment.split('|', 1)
+            if len(parts) == 2:
+                num = int(parts[0])
+                payload = parts[1]
+                print(f"\nSERVER: Received segment {num}: '{payload}'")
+                if num == expected:
+                    full_message += payload
+                    ack = f"{num}\n"
+                    client_socket.send(ack.encode('utf-8'))
+                    print(f"SERVER → sent ACK {num}")
+                    expected += 1
+                else:
+                    print(f"SERVER: Unexpected (expected {expected}, got {num})")
+            else:
+                print(f"SERVER: Invalid format: {segment}")
+        except Exception as e:
+            print(f"SERVER error: {e}")
+            break
 
-                        if checksum == calcular_checksum(payload):
-                            buffer_recebido[seq] = payload
-                            ack_pendentes.add(seq)
-                        else:
-                            print(f"[ERRO CHECKSUM] Pacote {seq}")
-                            nack_pendentes.add(seq)
+    print_title("STOP-AND-WAIT COMPLETE")
+    print(f"Full message: {full_message}\n")
 
-                        if modo == "grupo":
-                            if len(ack_pendentes) >= grupo_max or (time.time() - tempo_ack > 2):
-                                conn.sendall((json.dumps({"acks": list(ack_pendentes)}) + '\n').encode())
-                                print(f"[ACK GRUPO] {ack_pendentes}")
-                                ack_pendentes.clear()
-                                tempo_ack = time.time()
-                            if nack_pendentes:
-                                conn.sendall((json.dumps({"nacks": list(nack_pendentes)}) + '\n').encode())
-                                nack_pendentes.clear()
-                        else:
-                            if seq in ack_pendentes:
-                                conn.sendall((json.dumps({"acks": [seq]}) + '\n').encode())
-                            if seq in nack_pendentes:
-                                conn.sendall((json.dumps({"nacks": [seq]}) + '\n').encode())
+def receive_gobackn(client_socket):
+    print_title("STARTING GO-BACK-N RECEPTION")
+    buffer = {}
+    expected = 1
 
-                    except json.JSONDecodeError:
-                        print("[MALFORMADO] Pacote inválido")
+    while True:
+        try:
+            data = receive_full_message(client_socket)
+            if not data:
+                break
+            segment = data.decode('utf-8')
+            parts = segment.split('|', 1)
+            if len(parts) == 2:
+                num = int(parts[0])
+                payload = parts[1]
+                print(f"\nSERVER: Received segment {num}: '{payload}'")
 
-            except socket.timeout:
-                pass 
+                if num > expected:
+                    buffer[num] = payload
+                    nack = f"{expected-1}\n"
+                    client_socket.send(nack.encode())
+                    print(f"SERVER → resent ACK {expected-1}")
+                elif num < expected:
+                    client_socket.send(f"{num}\n".encode())
+                    print(f"SERVER → resent ACK {num}")
+                else:
+                    buffer[num] = payload
+                    client_socket.send(f"{num}\n".encode())
+                    print(f"SERVER → sent ACK {num}")
+                    expected += 1
+                    while expected in buffer:
+                        print(f"SERVER: Delivering buffered {expected}")
+                        expected += 1
+            else:
+                print(f"SERVER: Invalid format: {segment}")
+        except Exception as e:
+            print(f"SERVER error: {e}")
+            break
 
-        mensagem_ordenada = ''.join(buffer_recebido[k] for k in sorted(buffer_recebido))
-        print(f"\n[MENSAGEM FINAL] {mensagem_ordenada}")
+    full_message = "".join(buffer[i] for i in sorted(buffer))
+    print_title("GO-BACK-N COMPLETE")
+    print(f"Full message: {full_message}\n")
 
-    except Exception as e:
-        print(f"[ERRO SERVIDOR] {e}")
-    finally:
-        conn.close()
-        server_socket.close()
-        print("Conexão encerrada")
+def server():
+    host = '127.0.0.1'
+    port = 8080
 
-if __name__ == "__main__":
-    iniciar_servidor()
+    serv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    serv.bind((host, port))
+    serv.listen(1)
+    print(f"SERVER: listening on {host}:{port}")
+
+    client_sock, addr = serv.accept()
+    mode, max_size = process_handshake(client_sock)
+
+    if mode and max_size:
+        print(f"SERVER: client {addr} connected in '{mode}', max size {max_size}")
+        if mode == "GoBackN":
+            receive_gobackn(client_sock)
+        else:
+            receive_stop_and_wait(client_sock)
+
+    client_sock.close()
+
+if __name__ == '__main__':
+    server()
