@@ -6,8 +6,8 @@ import random
 TAM_FRAGMENTO = 3
 JANELA = 4
 TEMPO_TIMEOUT = 2
-SIMULAR_ERRO = True
-SIMULAR_PERDA = True
+SIMULAR_ERRO = False
+SIMULAR_PERDA = False
 
 def calcular_checksum(payload):
     return sum(ord(c) for c in payload)
@@ -42,7 +42,7 @@ def main():
             perda_simulada = SIMULAR_PERDA and random.random() < 0.2
 
             if erro_simulado:
-                checksum += 1
+                checksum += 1 
 
             pacote = {
                 "seq_num": proximo,
@@ -73,13 +73,19 @@ def main():
                         print(f"[ACK] recebido {ack_seq}")
                         if ack_seq in janela:
                             del janela[ack_seq]
+
                 elif 'nacks' in resposta:
                     for nack_seq in resposta["nacks"]:
-                        print(f"[NACK] recebido {nack_seq} — reenviando")
-                        pacote = janela[nack_seq][0]
-                        s.sendall((json.dumps(pacote) + '\n').encode())
+                        print(f"[NACK] recebido {nack_seq} — corrigindo e reenviando")
+                        if nack_seq in janela:
+                            pacote = janela[nack_seq][0]
+                            pacote["checksum"] = calcular_checksum(pacote["payload"])
+                            s.sendall((json.dumps(pacote) + '\n').encode())
+                            janela[nack_seq] = (pacote, time.time())
+                            print(f"[REENVIO CORRIGIDO] Seq {nack_seq} - Payload '{pacote['payload']}'")
+                        else:
+                            print(f"[AVISO] NACK recebido para Seq {nack_seq}, mas já removido da janela.")
 
-            # Avança a base da janela
             while base not in janela and base < proximo:
                 base += 1
             print(f"[JANELA] base={base}, proximo={proximo}")

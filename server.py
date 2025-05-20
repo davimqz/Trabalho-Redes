@@ -74,7 +74,7 @@ def iniciar_servidor():
                         print("[MALFORMADO] Pacote inválido")
 
             except socket.timeout:
-                pass  # ACK forçado removido aqui
+                pass 
 
         mensagem_ordenada = ''.join(buffer_recebido[k] for k in sorted(buffer_recebido))
         print(f"\n[MENSAGEM FINAL] {mensagem_ordenada}")
