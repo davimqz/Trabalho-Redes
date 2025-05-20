@@ -6,8 +6,8 @@ import random
 TAM_FRAGMENTO = 3
 JANELA = 4
 TEMPO_TIMEOUT = 2
-SIMULAR_ERRO = False
-SIMULAR_PERDA = False
+SIMULAR_ERRO = True
+SIMULAR_PERDA = True
 
 def calcular_checksum(payload):
     return sum(ord(c) for c in payload)
@@ -42,7 +42,7 @@ def main():
             perda_simulada = SIMULAR_PERDA and random.random() < 0.2
 
             if erro_simulado:
-                checksum += 1 
+                checksum += 1
 
             pacote = {
                 "seq_num": proximo,
@@ -53,6 +53,7 @@ def main():
             if not perda_simulada:
                 s.sendall((json.dumps(pacote) + '\n').encode())
                 print(f"[ENVIADO] Seq {proximo} - Payload '{payload}' - ErroSimulado={erro_simulado}")
+                print(f"[JANELA] base={base}, proximo={proximo + 1}")
             else:
                 print(f"[PERDA SIMULADA] Seq {proximo} - Payload '{payload}'")
 
@@ -63,12 +64,13 @@ def main():
             s.settimeout(0.5)
             dados = s.recv(1024).decode()
             for linha in dados.strip().split('\n'):
-                if not linha: continue
+                if not linha:
+                    continue
                 resposta = json.loads(linha)
 
                 if 'acks' in resposta:
                     for ack_seq in resposta["acks"]:
-                        print(f"[ACK GRUPO] recebido {ack_seq}")
+                        print(f"[ACK] recebido {ack_seq}")
                         if ack_seq in janela:
                             del janela[ack_seq]
                 elif 'nacks' in resposta:
@@ -76,8 +78,11 @@ def main():
                         print(f"[NACK] recebido {nack_seq} — reenviando")
                         pacote = janela[nack_seq][0]
                         s.sendall((json.dumps(pacote) + '\n').encode())
+
+            # Avança a base da janela
             while base not in janela and base < proximo:
                 base += 1
+            print(f"[JANELA] base={base}, proximo={proximo}")
 
         except socket.timeout:
             now = time.time()
